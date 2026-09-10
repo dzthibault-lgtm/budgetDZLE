@@ -170,7 +170,7 @@ const state = {
   editingId: null,
   showNatureManager: false,
   newNatureInput: '',
-  form: { name: '', amount: '', group: 'besoins', nature: '', day: now.getDate() },
+  form: { name: '', amount: '', group: 'besoins', nature: '', day: now.getDate(), isCredit: false },
   formError: '',
   saveError: '',
   importRows: [],
@@ -310,7 +310,7 @@ async function addExpense(e) {
   const { data, error } = await sb.from('expenses').insert({
     month_id: row.id,
     name: state.form.name.trim(),
-    amount: amt,
+    amount: state.form.isCredit ? -amt : amt,
     group_type: state.form.group,
     nature: state.form.nature || 'Autre',
     day: Math.min(Math.max(Number(state.form.day) || 1, 1), dim),
@@ -318,7 +318,7 @@ async function addExpense(e) {
   if (error) { state.formError = "Échec de l'ajout de la dépense."; }
   else {
     state.expenses.push(data);
-    state.form.name = ''; state.form.amount = '';
+    state.form.name = ''; state.form.amount = ''; state.form.isCredit = false;
     refreshYear();
     toast('Dépense ajoutée');
   }
@@ -340,6 +340,7 @@ async function saveEditExpense(id) {
   const groupEl = document.getElementById(`edit-group-${id}`);
   const natureEl = document.getElementById(`edit-nature-${id}`);
   const dayEl = document.getElementById(`edit-day-${id}`);
+  const creditEl = document.getElementById(`edit-credit-${id}`);
   const amt = Number(amountEl.value);
   if (!nameEl.value.trim() || !amountEl.value || isNaN(amt) || amt <= 0) {
     state.saveError = 'Nom ou montant invalide.'; render(); return;
@@ -347,7 +348,7 @@ async function saveEditExpense(id) {
   const dim = daysInMonth(state.year, state.month);
   const patch = {
     name: nameEl.value.trim(),
-    amount: amt,
+    amount: creditEl.checked ? -amt : amt,
     group_type: groupEl.value,
     nature: natureEl.value,
     day: Math.min(Math.max(Number(dayEl.value) || 1, 1), dim),
@@ -528,7 +529,7 @@ async function confirmImport() {
     const { error } = await sb.from('expenses').insert({
       month_id: monthRow.id,
       name: r.label,
-      amount: r.amount,
+      amount: r.isDebit ? r.amount : -r.amount,
       group_type: r.group,
       nature: r.nature,
       day: r.day,
@@ -744,6 +745,10 @@ function appTemplate() {
           <input class="input" type="number" min="1" max="${dim}" data-bind="form.day" value="${s.form.day}" />
         </label>
         <button type="submit" class="btn">+ Ajouter</button>
+        <label style="grid-column:1 / -1; display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); margin-top:-4px;">
+          <input type="checkbox" id="form-is-credit" data-bind-checkbox="form.isCredit" ${s.form.isCredit?'checked':''} />
+          Remboursement / crédit reçu (réduit le budget de cette catégorie au lieu de l'augmenter)
+        </label>
       </form>
       ${s.formError ? `<div style="color:var(--danger); font-size:12.5px; margin-top:10px;">${s.formError}</div>` : ''}
 
@@ -797,7 +802,7 @@ function appTemplate() {
               <span class="imp-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.label.replace(/"/g,'&quot;')}">
                 ${r.isDebit ? '' : '↩ '}${r.label}
                 ${r.duplicate ? `<span class="badge-dup">déjà présent</span>` : ''}
-                ${!r.isDebit ? `<span class="badge-dup">crédit — non importé par défaut</span>` : ''}
+                ${!r.isDebit ? `<span class="badge-dup">crédit — coche pour l'importer comme remboursement</span>` : ''}
               </span>
               <span class="imp-meta tabnum" style="${r.isDebit?'':'color:var(--muted);'}">${fmtEUR2(r.amount)}</span>
               <div class="imp-controls">
@@ -843,7 +848,7 @@ function appTemplate() {
                 <div class="exp-row" style="align-items:flex-start; flex-wrap:wrap; gap:8px;">
                   <div style="display:grid; grid-template-columns:1fr 90px; gap:8px; flex:1; min-width:220px;">
                     <input class="input" style="margin-top:0;" type="text" id="edit-name-${e.id}" value="${e.name.replace(/"/g,'&quot;')}" />
-                    <input class="input" style="margin-top:0;" type="number" min="0" step="0.01" id="edit-amount-${e.id}" value="${e.amount}" />
+                    <input class="input" style="margin-top:0;" type="number" min="0" step="0.01" id="edit-amount-${e.id}" value="${Math.abs(e.amount)}" />
                   </div>
                   <div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:8px; flex:1; min-width:260px;">
                     <select class="input" style="margin-top:0;" id="edit-group-${e.id}">
@@ -854,6 +859,10 @@ function appTemplate() {
                     </select>
                     <input class="input" style="margin-top:0;" type="number" min="1" max="${dim}" id="edit-day-${e.id}" value="${e.day}" />
                   </div>
+                  <label style="flex-basis:100%; display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted);">
+                    <input type="checkbox" id="edit-credit-${e.id}" ${e.amount < 0 ? 'checked' : ''} />
+                    Remboursement / crédit
+                  </label>
                   <div class="row gap8">
                     <button class="icon-btn" style="border:1px solid var(--rule);" data-action="save-expense" data-id="${e.id}">✓</button>
                     <button class="icon-btn" style="border:1px solid var(--rule);" data-action="cancel-edit">✕</button>
@@ -865,9 +874,9 @@ function appTemplate() {
                 <div class="dot" style="background:${g.color};"></div>
                 <div style="flex:1; min-width:0;">
                   <div style="font-size:13.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</div>
-                  <div class="muted" style="font-size:11.5px;">${e.nature} · le ${e.day}</div>
+                  <div class="muted" style="font-size:11.5px;">${e.nature} · le ${e.day}${e.amount < 0 ? ' · Remboursement' : ''}</div>
                 </div>
-                <div class="tabnum" style="font-size:13.5px; font-weight:600; white-space:nowrap;">${fmtEUR2(e.amount)}</div>
+                <div class="tabnum" style="font-size:13.5px; font-weight:600; white-space:nowrap; color:${e.amount < 0 ? 'var(--besoins)' : 'var(--ink)'};">${e.amount < 0 ? '+ ' + fmtEUR2(Math.abs(e.amount)) : fmtEUR2(e.amount)}</div>
                 <button class="icon-btn" data-action="edit-expense" data-id="${e.id}">✎</button>
                 <button class="icon-btn" data-action="delete-expense" data-id="${e.id}">🗑</button>
               </div>`;
@@ -1007,6 +1016,12 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.dataset.bindCheckbox) {
+    const bind = e.target.dataset.bindCheckbox;
+    if (bind.startsWith('form.')) state.form[bind.split('.')[1]] = e.target.checked;
+    else state[bind] = e.target.checked;
+    return;
+  }
   if (e.target.id === 'csvFileInput' && e.target.files && e.target.files[0]) {
     handleCsvFile(e.target.files[0]);
     return;
