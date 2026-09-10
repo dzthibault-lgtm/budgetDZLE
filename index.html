@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Grand livre — Budget mensuel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --ink: #20281F;
+    --paper: #F1EFE7;
+    --card: #FBFAF6;
+    --rule: #DAD5C4;
+    --muted: #6E6A5C;
+    --besoins: #2F6E68;
+    --envies: #A9522F;
+    --epargne: #48538A;
+    --danger: #AD3B2E;
+    --danger-bg: #F6E6E1;
+    --danger-border: #E0B7A9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  h1, h2, .serif { font-family: 'Fraunces', serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 20px 22px;
+  }
+  .row { display: flex; align-items: center; }
+  .between { justify-content: space-between; }
+  .gap8 { gap: 8px; } .gap10 { gap: 10px; } .gap12 { gap: 12px; } .gap16 { gap: 16px; }
+  .muted { color: var(--muted); }
+  .mb14 { margin-bottom: 14px; } .mb16 { margin-bottom: 16px; } .mb18 { margin-bottom: 18px; } .mb24 { margin-bottom: 24px; }
+  .grid2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+  .grid2b { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 720px) {
+    .grid2, .grid2b, .grid3 { grid-template-columns: 1fr; }
+    .expense-form { grid-template-columns: 1fr 1fr !important; }
+  }
+  label.field { font-size: 12.5px; color: var(--muted); display: block; }
+  .input, select.input {
+    font-family: 'IBM Plex Sans', sans-serif;
+    border: 1px solid var(--rule);
+    background: #fff;
+    border-radius: 3px;
+    padding: 9px 11px;
+    font-size: 13.5px;
+    color: var(--ink);
+    outline: none;
+    width: 100%;
+    margin-top: 5px;
+  }
+  .input:focus { border-color: var(--ink); }
+  .btn {
+    font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 13px;
+    border: none; border-radius: 3px; padding: 10px 16px; cursor: pointer;
+    background: var(--ink); color: var(--paper);
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn-ghost {
+    font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 12.5px;
+    border: 1px solid var(--rule); border-radius: 3px; padding: 8px 12px; cursor: pointer;
+    background: transparent; color: var(--ink);
+  }
+  .btn-ghost:hover { background: rgba(0,0,0,0.03); }
+  .icon-btn {
+    border: none; background: transparent; cursor: pointer; padding: 6px;
+    border-radius: 3px; color: var(--muted); font-size: 15px; line-height: 1;
+  }
+  .icon-btn:hover { background: rgba(0,0,0,0.05); color: var(--ink); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--rule); border-radius: 999px; padding: 5px 6px 5px 12px;
+    font-size: 12.5px; background: #fff; margin: 0 8px 8px 0;
+  }
+  .exp-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .exp-row:last-child { border-bottom: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .alert {
+    background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger);
+    padding: 11px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 18px;
+  }
+  .tabnum { font-variant-numeric: tabular-nums; }
+  .auth-screen { max-width: 380px; margin: 80px auto; }
+  .auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .auth-tabs button {
+    flex: 1; padding: 9px; border: 1px solid var(--rule); background: #fff; border-radius: 3px;
+    font-family: 'IBM Plex Sans'; font-weight: 600; font-size: 13px; cursor: pointer; color: var(--muted);
+  }
+  .auth-tabs button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .bar-track { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; }
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 4px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+    z-index: 50;
+  }
+  #toast.show { opacity: 1; }
+  .import-table { max-height: 420px; overflow-y: auto; border: 1px solid var(--rule); border-radius: 4px; }
+  .import-row { display: grid; grid-template-columns: 22px 74px 1fr 84px 220px; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+  .import-row:last-child { border-bottom: none; }
+  .import-row.is-header { background: #F3F1E9; font-weight: 600; color: var(--muted); font-size: 11.5px; position: sticky; top: 0; }
+  .imp-controls { display: flex; gap: 6px; }
+  .import-row select { font-family: 'IBM Plex Sans'; font-size: 12px; border: 1px solid var(--rule); border-radius: 3px; padding: 4px 6px; width: 100%; }
+  .badge-dup { font-size: 10.5px; background: #EFEAD8; color: var(--muted); border-radius: 999px; padding: 2px 7px; margin-left: 6px; white-space: nowrap; }
+  .file-drop {
+    border: 1px dashed var(--rule); border-radius: 4px; padding: 18px; text-align: center;
+    font-size: 13px; color: var(--muted); cursor: pointer; background: #fff;
+  }
+  .file-drop:hover { border-color: var(--ink); color: var(--ink); }
+  @media (max-width: 720px) {
+    .import-row { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+    .import-row.is-header { display: none; }
+    .import-row > .imp-name { flex-basis: 100%; order: 1; }
+    .import-row > .imp-meta { order: 2; font-size: 11.5px; color: var(--muted); }
+    .import-row > .imp-controls { order: 3; flex-basis: 100%; display: flex; gap: 8px; }
+    .import-row > .imp-controls select { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="toast"></div>
+
+<script>
+// =========================================================
+// 1) CONFIGURATION — à remplir après création du projet Supabase
+// =========================================================
+const SUPABASE_URL = "https://ypkogemhubxaqektuyfa.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29nZW1odWJ4YXFla3R1eWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMjcwMTIsImV4cCI6MjEwNDYwMzAxMn0.bnlbrsJp4hAqZrnr8dhrkWnsPvHodRCuTeh4Hi0i6sg";
+
+const sb = window.supabase.createClient(https://ypkogemhubxaqektuyfa.supabase.co, eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwa29nZW1odWJ4YXFla3R1eWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMjcwMTIsImV4cCI6MjEwNDYwMzAxMn0.bnlbrsJp4hAqZrnr8dhrkWnsPvHodRCuTeh4Hi0i6sg);
+
+const GROUPS = [
+  { key: 'besoins', label: 'Besoins', pct: 50, color: 'var(--besoins)', hex: '#2F6E68' },
+  { key: 'envies', label: 'Envies', pct: 30, color: 'var(--envies)', hex: '#A9522F' },
+  { key: 'epargne', label: 'Épargne', pct: 20, color: 'var(--epargne)', hex: '#48538A' },
+];
+const NATURE_PALETTE = ['#2F6E68', '#A9522F', '#48538A', '#8C7A3E', '#6E4A5E', '#3E6E8C', '#8C4A3E', '#4A8C6E'];
+
+const now = new Date();
+const state = {
+  session: null,
+  authMode: 'signin',
+  authEmail: '', authPassword: '',
+  authError: '', authLoading: false,
+  loading: true,
+  year: now.getFullYear(),
+  month: now.getMonth() + 1,
+  natures: [],
+  monthRow: null,
+  expenses: [],
+  yearMonths: [],
+  filterGroup: 'all',
+  filterNature: 'all',
+  showNatureManager: false,
+  newNatureInput: '',
+  form: { name: '', amount: '', group: 'besoins', nature: '', day: now.getDate() },
+  formError: '',
+  saveError: '',
+  importRows: [],
+  importOpen: false,
+  importBusy: false,
+  importError: '',
+};
+
+const root = document.getElementById('root');
+
+function fmtEUR(n) {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n || 0);
+}
+function fmtEUR2(n) {
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n || 0);
+}
+function monthLabelFull(y, m) {
+  return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+}
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+// =========================================================
+// 2) AUTHENTIFICATION
+// =========================================================
+async function initAuth() {
+  const { data } = await sb.auth.getSession();
+  state.session = data.session;
+  sb.auth.onAuthStateChange((_event, session) => {
+    state.session = session;
+    if (session) { loadAll(); } else { render(); }
+  });
+  if (state.session) { await loadAll(); } else { state.loading = false; render(); }
+}
+
+async function signIn() {
+  state.authError = ''; state.authLoading = true; render();
+  const { error } = await sb.auth.signInWithPassword({ email: state.authEmail, password: state.authPassword });
+  state.authLoading = false;
+  if (error) { state.authError = traduireErreur(error.message); render(); }
+}
+
+async function signUp() {
+  state.authError = ''; state.authLoading = true; render();
+  const { error } = await sb.auth.signUp({ email: state.authEmail, password: state.authPassword });
+  state.authLoading = false;
+  if (error) { state.authError = traduireErreur(error.message); render(); }
+  else { state.authError = "Compte créé. Vérifie tes e-mails si une confirmation est requise, sinon tu es déjà connecté(e)."; render(); }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+}
+
+function traduireErreur(msg) {
+  if (/already registered/i.test(msg)) return "Un compte existe déjà avec cet e-mail.";
+  if (/invalid login/i.test(msg)) return "E-mail ou mot de passe incorrect.";
+  if (/password should be/i.test(msg)) return "Le mot de passe doit faire au moins 6 caractères.";
+  return msg;
+}
+
+// =========================================================
+// 3) CHARGEMENT DES DONNÉES
+// =========================================================
+async function loadAll() {
+  state.loading = true; render();
+  try {
+    const [naturesRes, monthRes] = await Promise.all([
+      sb.from('natures').select('*').order('name'),
+      sb.from('months').select('*').eq('year', state.year).eq('month', state.month).maybeSingle(),
+    ]);
+    state.natures = (naturesRes.data || []).map(n => n.name);
+    if (!state.form.nature && state.natures.length) state.form.nature = state.natures[0];
+    state.monthRow = monthRes.data || null;
+
+    if (state.monthRow) {
+      const expRes = await sb.from('expenses').select('*').eq('month_id', state.monthRow.id).order('day');
+      state.expenses = expRes.data || [];
+    } else {
+      state.expenses = [];
+    }
+
+    const yearRes = await sb.from('months')
+      .select('year, month, salary_a, salary_b, expenses(amount, group_type)')
+      .eq('year', state.year);
+    state.yearMonths = yearRes.data || [];
+
+    state.saveError = '';
+  } catch (e) {
+    state.saveError = "Impossible de charger les données. Vérifie ta connexion et la configuration Supabase.";
+  }
+  state.loading = false;
+  render();
+}
+
+const monthRowCache = {};
+async function ensureMonthRowFor(year, month) {
+  const key = `${year}-${month}`;
+  if (year === state.year && month === state.month && state.monthRow) return state.monthRow;
+  if (monthRowCache[key]) return monthRowCache[key];
+  let { data } = await sb.from('months').select('*').eq('year', year).eq('month', month).maybeSingle();
+  if (!data) {
+    const ins = await sb.from('months').insert({ year, month, salary_a: 0, salary_b: 0 }).select().single();
+    if (ins.error) { state.saveError = "Échec de la création du mois."; render(); return null; }
+    data = ins.data;
+  }
+  monthRowCache[key] = data;
+  if (year === state.year && month === state.month) state.monthRow = data;
+  return data;
+}
+async function ensureMonthRow() { return ensureMonthRowFor(state.year, state.month); }
+
+// =========================================================
+// 4) ACTIONS
+// =========================================================
+async function updateSalary(field, value) {
+  const row = await ensureMonthRow();
+  if (!row) return;
+  const patch = {}; patch[field] = value === '' ? 0 : Number(value);
+  const { data, error } = await sb.from('months').update(patch).eq('id', row.id).select().single();
+  if (error) { state.saveError = "La sauvegarde a échoué."; }
+  else { state.monthRow = data; state.saveError = ''; refreshYear(); }
+  render();
+}
+
+async function addExpense(e) {
+  e.preventDefault();
+  const amt = Number(state.form.amount);
+  if (!state.form.name.trim() || !state.form.amount || isNaN(amt) || amt <= 0) {
+    state.formError = 'Renseigne un nom et un montant valide.'; render(); return;
+  }
+  const row = await ensureMonthRow();
+  if (!row) return;
+  state.formError = '';
+  const dim = daysInMonth(state.year, state.month);
+  const { data, error } = await sb.from('expenses').insert({
+    month_id: row.id,
+    name: state.form.name.trim(),
+    amount: amt,
+    group_type: state.form.group,
+    nature: state.form.nature || 'Autre',
+    day: Math.min(Math.max(Number(state.form.day) || 1, 1), dim),
+  }).select().single();
+  if (error) { state.formError = "Échec de l'ajout de la dépense."; }
+  else {
+    state.expenses.push(data);
+    state.form.name = ''; state.form.amount = '';
+    refreshYear();
+    toast('Dépense ajoutée');
+  }
+  render();
+}
+
+async function deleteExpense(id) {
+  const { error } = await sb.from('expenses').delete().eq('id', id);
+  if (!error) { state.expenses = state.expenses.filter(e => e.id !== id); refreshYear(); }
+  render();
+}
+
+async function addNature() {
+  const n = state.newNatureInput.trim();
+  if (!n || state.natures.includes(n)) { state.newNatureInput = ''; render(); return; }
+  const { error } = await sb.from('natures').insert({ name: n });
+  if (!error) { state.natures.push(n); state.newNatureInput = ''; }
+  render();
+}
+
+async function removeNature(n) {
+  const { error } = await sb.from('natures').delete().eq('name', n);
+  if (!error) {
+    state.natures = state.natures.filter(x => x !== n);
+    if (state.form.nature === n) state.form.nature = state.natures[0] || '';
+  }
+  render();
+}
+
+async function refreshYear() {
+  const yearRes = await sb.from('months')
+    .select('year, month, salary_a, salary_b, expenses(amount, group_type)')
+    .eq('year', state.year);
+  state.yearMonths = yearRes.data || [];
+}
+
+// =========================================================
+// 4bis) IMPORT D'UN RELEVÉ BANCAIRE (CSV)
+// =========================================================
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const decoder = new TextDecoder('windows-1252');
+        resolve(decoder.decode(reader.result));
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function parseAmountFR(s) {
+  if (!s) return null;
+  const cleaned = String(s).replace(/[\s\u00A0]/g, '').replace(',', '.');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
+function guessCategory(text) {
+  const t = text.toUpperCase();
+  const rules = [
+    [/\bEDF\b|\bENGIE\b|\bELECTRICITE\b|\bGAZ DE\b|\bEAUX DE\b|\bLOYER\b/, 'Logement', 'besoins'],
+    [/\bCARREFOUR\b|\bLECLERC\b|\bAUCHAN\b|\bLIDL\b|\bSUPER ?U\b|\bINTERMARCHE\b|\bCASINO\b|\bDRIVE\b|\bCOURSES\b/, 'Alimentation', 'besoins'],
+    [/\bSNCF\b|\bESSO\b|\bTOTAL\b|\bTOTALENERGIES\b|\bSHELL\b|\bPARKING\b|\bAUTOROUTE\b|\bSANEF\b|\bVINCI\b|\bSEMITAG\b|\bTAG\b/, 'Transport', 'besoins'],
+    [/\bMGEN\b|\bMAIF\b|\bMUTUELLE\b|\bCPAM\b|\bPHARMACIE\b|\bDENTISTE\b|\bPSYCHIATRE\b|\bDOCTEUR\b|\bMEDECIN\b|ASSU\.? ?CNP|\bSANTE\b/, 'Santé', 'besoins'],
+    [/\bFREE MOBILE\b|\bFREE TELECOM\b|\bORANGE\b|\bSFR\b|\bBOUYGUES\b/, 'Abonnements', 'besoins'],
+    [/\bNETFLIX\b|\bDEEZER\b|\bSPOTIFY\b|\bDISNEY\+?\b|\bCANAL\+?\b|\bAMAZON PRIME\b/, 'Loisirs', 'envies'],
+    [/\bRESTAURANT\b|\bBAR\b|\bCINEMA\b|\bCONCERT\b|\bSPECTACLE\b|\bVOYAGE\b|\bHOTEL\b|\bCHAUSSURES\b|\bVETEMENT\b|\bBOUTIQUE\b|\bGLACE\b|\bMARAICHER\b|\bAMAZON\b/, 'Loisirs', 'envies'],
+    [/\bEPARGNE\b|\bLIVRET\b|ASSURANCE VIE|\bPEA\b/, 'Autre', 'epargne'],
+    [/\bPRET HABITAT\b|REMBOURSEMENT DE PR[ÊE]T|\bCREDIT LOGEMENT\b/, 'Logement', 'besoins'],
+    [/\bCOTISATION\b|FRAIS BANCAIRE|\bCOMMISSION\b|OFFRE COMPTE/, 'Abonnements', 'besoins'],
+  ];
+  for (const [re, nature, group] of rules) if (re.test(t)) return { nature, group };
+  return { nature: 'Autre', group: 'besoins' };
+}
+
+function parseBankCSV(rawText) {
+  const parsed = Papa.parse(rawText, { delimiter: ';', skipEmptyLines: false });
+  const rows = parsed.data;
+  const headerIdx = rows.findIndex(r => r[0] && r[0].trim().toLowerCase() === 'date');
+  if (headerIdx === -1) throw new Error('EN_TETE_INTROUVABLE');
+  const txRows = rows.slice(headerIdx + 1).filter(r => r[0] && /^\d{2}\/\d{2}\/\d{4}$/.test(r[0].trim()));
+  if (!txRows.length) throw new Error('AUCUNE_OPERATION');
+  return txRows.map((r, i) => {
+    const dateStr = r[0].trim();
+    const [dd, mm, yyyy] = dateStr.split('/').map(Number);
+    const libelle = (r[1] || '').trim();
+    const lines = libelle.split('\n').map(l => l.trim()).filter(Boolean);
+    const label = (lines[1] || lines[0] || 'Opération').slice(0, 120);
+    const debit = parseAmountFR((r[2] || '').trim());
+    const credit = parseAmountFR((r[3] || '').trim());
+    const guess = guessCategory(lines.join(' '));
+    return {
+      id: 'imp' + i + '_' + dd + mm + yyyy,
+      day: dd, month: mm, year: yyyy,
+      label, debit, credit,
+      isDebit: debit != null,
+      amount: debit != null ? debit : credit,
+      nature: guess.nature,
+      group: guess.group,
+      checked: debit != null,
+      duplicate: false,
+    };
+  }).filter(r => r.amount != null && r.amount > 0);
+}
+
+async function handleCsvFile(file) {
+  state.importError = ''; state.importBusy = true; render();
+  try {
+    const text = await readFileAsText(file);
+    let rows = parseBankCSV(text);
+
+    const periods = Array.from(new Set(rows.map(r => `${r.year}-${r.month}`)));
+    const existingMap = {};
+    for (const p of periods) {
+      const [y, m] = p.split('-').map(Number);
+      const { data } = await sb.from('months').select('id, expenses(day, amount)').eq('year', y).eq('month', m).maybeSingle();
+      existingMap[p] = data?.expenses || [];
+    }
+
+    rows = rows.map(r => {
+      const nature = state.natures.includes(r.nature) ? r.nature : (state.natures[0] || 'Autre');
+      if (!r.isDebit) return { ...r, nature, checked: false };
+      const key = `${r.year}-${r.month}`;
+      const dup = (existingMap[key] || []).some(e => e.day === r.day && Math.abs(Number(e.amount) - r.amount) < 0.01);
+      return { ...r, nature, duplicate: dup, checked: !dup };
+    });
+
+    state.importRows = rows;
+    state.importOpen = true;
+  } catch (e) {
+    if (e.message === 'EN_TETE_INTROUVABLE') state.importError = "Format non reconnu : impossible de trouver l'en-tête du relevé. Vérifie qu'il s'agit bien d'un export CSV de ta banque.";
+    else if (e.message === 'AUCUNE_OPERATION') state.importError = "Aucune opération trouvée dans ce fichier.";
+    else state.importError = "Impossible de lire ce fichier.";
+  }
+  state.importBusy = false;
+  render();
+}
+
+function updateImportSummary() {
+  const el = document.getElementById('import-summary');
+  const btn = document.getElementById('import-confirm-btn');
+  const n = state.importRows.filter(r => r.checked).length;
+  if (el) el.textContent = `${n} opération(s) sélectionnée(s) sur ${state.importRows.length}`;
+  if (btn) { btn.textContent = `Importer (${n})`; btn.disabled = n === 0; }
+}
+
+function selectImportRows(mode) {
+  state.importRows = state.importRows.map(r => ({
+    ...r,
+    checked: mode === 'none' ? false : (mode === 'all' ? true : (r.isDebit && !r.duplicate)),
+  }));
+  render();
+}
+
+function cancelImport() {
+  state.importOpen = false;
+  state.importRows = [];
+  state.importError = '';
+  const input = document.getElementById('csvFileInput');
+  if (input) input.value = '';
+  render();
+}
+
+async function confirmImport() {
+  const selected = state.importRows.filter(r => r.checked);
+  if (!selected.length) return;
+  state.importBusy = true; render();
+  let count = 0;
+  for (const r of selected) {
+    const monthRow = await ensureMonthRowFor(r.year, r.month);
+    if (!monthRow) continue;
+    const { error } = await sb.from('expenses').insert({
+      month_id: monthRow.id,
+      name: r.label,
+      amount: r.amount,
+      group_type: r.group,
+      nature: r.nature,
+      day: r.day,
+    });
+    if (!error) count++;
+  }
+  state.importBusy = false;
+  state.importOpen = false;
+  state.importRows = [];
+  const input = document.getElementById('csvFileInput');
+  if (input) input.value = '';
+  toast(`${count} dépense(s) importée(s)`);
+  await loadAll();
+}
+
+function changeMonth(delta) {
+  let m = state.month + delta, y = state.year;
+  if (m < 1) { m = 12; y -= 1; }
+  if (m > 12) { m = 1; y += 1; }
+  state.month = m; state.year = y;
+  loadAll();
+}
+function goToday() { state.month = now.getMonth() + 1; state.year = now.getFullYear(); loadAll(); }
+
+// =========================================================
+// 5) CALCULS
+// =========================================================
+function computeDerived() {
+  const income = (Number(state.monthRow?.salary_a) || 0) + (Number(state.monthRow?.salary_b) || 0);
+  const targets = { besoins: income * 0.5, envies: income * 0.3, epargne: income * 0.2 };
+  const spent = { besoins: 0, envies: 0, epargne: 0 };
+  for (const e of state.expenses) spent[e.group_type] = (spent[e.group_type] || 0) + Number(e.amount || 0);
+  const totalSpent = spent.besoins + spent.envies + spent.epargne;
+  const remaining = income - totalSpent;
+  const isCurrentMonth = now.getFullYear() === state.year && now.getMonth() + 1 === state.month;
+  const dim = daysInMonth(state.year, state.month);
+  const daysLeft = isCurrentMonth ? Math.max(dim - now.getDate() + 1, 1) : dim;
+  const remainingPerDay = remaining > 0 ? remaining / daysLeft : 0;
+  return { income, targets, spent, totalSpent, remaining, daysLeft, remainingPerDay, dim };
+}
+
+function byNatureBreakdown() {
+  const totals = {}; let sum = 0;
+  for (const e of state.expenses) {
+    totals[e.nature] = (totals[e.nature] || 0) + Number(e.amount || 0);
+    sum += Number(e.amount || 0);
+  }
+  return Object.entries(totals)
+    .map(([nature, total]) => ({ nature, total, pct: sum > 0 ? (total / sum) * 100 : 0 }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// =========================================================
+// 6) RENDU
+// =========================================================
+function gaugeSVG(percent, colorVar, colorHex) {
+  const size = 132, stroke = 11, r = size / 2 - stroke, c = 2 * Math.PI * r;
+  const capped = Math.min(Math.max(percent, 0), 100);
+  const offset = c - (capped / 100) * c;
+  const over = percent > 100;
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--rule)" stroke-width="${stroke}" />
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
+        stroke="${over ? 'var(--danger)' : colorVar}" stroke-width="${stroke}"
+        stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"
+        transform="rotate(-90 ${size/2} ${size/2})" style="transition: stroke-dashoffset .5s ease" />
+    </svg>`;
+}
+
+function authTemplate() {
+  const s = state;
+  return `
+  <div class="wrap">
+    <div class="auth-screen card">
+      <div class="muted" style="font-size:11.5px; letter-spacing:.04em; margin-bottom:4px;">BUDGET MENSUEL · 50/30/20</div>
+      <h1 class="serif" style="font-size:26px; margin:0 0 20px;">Grand livre</h1>
+      <div class="auth-tabs">
+        <button data-action="auth-mode" data-mode="signin" class="${s.authMode==='signin'?'active':''}">Connexion</button>
+        <button data-action="auth-mode" data-mode="signup" class="${s.authMode==='signup'?'active':''}">Créer un compte</button>
+      </div>
+      <label class="field">E-mail
+        <input class="input" type="email" data-bind="authEmail" value="${s.authEmail}" placeholder="toi@exemple.com" />
+      </label>
+      <label class="field" style="margin-top:10px;">Mot de passe
+        <input class="input" type="password" data-bind="authPassword" value="${s.authPassword}" placeholder="••••••••" />
+      </label>
+      ${s.authError ? `<div class="alert" style="margin-top:14px;">${s.authError}</div>` : ''}
+      <button class="btn" style="width:100%; margin-top:16px;" data-action="${s.authMode==='signin'?'signin':'signup'}" ${s.authLoading?'disabled':''}>
+        ${s.authLoading ? 'Un instant…' : (s.authMode==='signin' ? 'Se connecter' : 'Créer mon compte')}
+      </button>
+    </div>
+  </div>`;
+}
+
+function appTemplate() {
+  const s = state;
+  if (s.loading) {
+    return `<div class="wrap"><div class="muted" style="text-align:center; padding:60px 0;">Chargement du budget…</div></div>`;
+  }
+  const d = computeDerived();
+  const dim = d.dim;
+  const overBudget = GROUPS.filter(g => d.targets[g.key] > 0 && d.spent[g.key] > d.targets[g.key]);
+  const byNature = byNatureBreakdown();
+  const availableNaturesForFilter = Array.from(new Set([...s.natures, ...s.expenses.map(e => e.nature)]));
+  const filteredExpenses = s.expenses
+    .filter(e => s.filterGroup === 'all' || e.group_type === s.filterGroup)
+    .filter(e => s.filterNature === 'all' || e.nature === s.filterNature)
+    .slice().sort((a, b) => a.day - b.day);
+
+  return `
+  <div class="wrap">
+    <div class="row between" style="align-items:flex-end; flex-wrap:wrap; gap:14px; margin-bottom:26px;">
+      <div>
+        <div class="muted" style="font-size:11.5px; letter-spacing:.04em; margin-bottom:4px;">BUDGET MENSUEL · 50/30/20</div>
+        <h1 class="serif" style="font-size:30px; margin:0;">Grand livre</h1>
+      </div>
+      <div class="row gap8">
+        <button class="icon-btn" data-action="prev-month">←</button>
+        <div class="serif" style="min-width:168px; text-align:center; font-size:16.5px; font-weight:600; text-transform:capitalize;">
+          ${monthLabelFull(s.year, s.month)}
+        </div>
+        <button class="icon-btn" data-action="next-month">→</button>
+        <button class="btn-ghost" data-action="today" style="margin-left:8px;">Aujourd'hui</button>
+        <button class="btn-ghost" data-action="signout" style="margin-left:8px;">Déconnexion</button>
+      </div>
+    </div>
+
+    ${s.saveError ? `<div class="alert">${s.saveError}</div>` : ''}
+    ${overBudget.length ? `<div class="alert">⚠ Dépassement sur ${overBudget.map(g=>g.label).join(' et ')} ce mois-ci.</div>` : ''}
+
+    <div class="grid2 mb16">
+      <div class="card">
+        <h2 class="serif mb14" style="font-size:16.5px;">Revenus du mois</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <label class="field">Salaire A
+            <input class="input" type="number" min="0" data-bind-blur="salary_a" value="${s.monthRow?.salary_a ?? ''}" placeholder="0" />
+          </label>
+          <label class="field">Salaire B
+            <input class="input" type="number" min="0" data-bind-blur="salary_b" value="${s.monthRow?.salary_b ?? ''}" placeholder="0" />
+          </label>
+        </div>
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--rule);">
+          <div class="row between" style="font-size:13.5px; margin-bottom:6px;">
+            <span class="muted">Revenu total</span><span style="font-weight:600;" class="tabnum">${fmtEUR2(d.income)}</span>
+          </div>
+          ${GROUPS.map(g => `
+            <div class="row between muted" style="font-size:12.5px; margin-top:3px;">
+              <span>${g.label} (${g.pct}%)</span><span class="tabnum">${fmtEUR(d.targets[g.key])}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="serif mb14" style="font-size:16.5px;">Reste à vivre</h2>
+        <div class="serif tabnum" style="font-size:32px; font-weight:600; color:${d.remaining>=0?'var(--ink)':'var(--danger)'};">
+          ${fmtEUR2(d.remaining)}
+        </div>
+        <div class="muted" style="font-size:12.5px; margin-top:4px;">
+          sur ${fmtEUR2(d.income)} de revenu, ${fmtEUR2(d.totalSpent)} déjà dépensés
+        </div>
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--rule); font-size:13px;">
+          ${d.remaining > 0
+            ? `Soit environ <strong class="tabnum">${fmtEUR2(d.remainingPerDay)}</strong> par jour sur les ${d.daysLeft} jour(s) restant(s).`
+            : `<span style="color:var(--danger);">Le budget du mois est dépassé de ${fmtEUR2(Math.abs(d.remaining))}.</span>`}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb16">
+      <h2 class="serif mb14" style="font-size:16.5px;">Répartition en temps réel</h2>
+      <div class="grid3" style="justify-items:center;">
+        ${GROUPS.map(g => {
+          const pct = d.targets[g.key] > 0 ? (d.spent[g.key] / d.targets[g.key]) * 100 : (d.spent[g.key] > 0 ? 100 : 0);
+          const over = d.spent[g.key] > d.targets[g.key] && d.targets[g.key] > 0;
+          return `
+          <div style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+            <div style="position:relative; width:132px; height:132px;">
+              ${gaugeSVG(pct, g.color, g.hex)}
+              <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <span class="tabnum" style="font-size:22px; font-weight:600; color:${over?'var(--danger)':'var(--ink)'};">${Math.round(pct)}%</span>
+                <span class="muted" style="font-size:10.5px; margin-top:2px;">du budget</span>
+              </div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:13.5px; font-weight:600;">${g.label}</div>
+              <div class="muted tabnum" style="font-size:12px;">${fmtEUR(d.spent[g.key])} / ${fmtEUR(d.targets[g.key])}</div>
+              ${over ? `<div style="font-size:11.5px; color:var(--danger); margin-top:2px;">Dépassement de ${fmtEUR(d.spent[g.key]-d.targets[g.key])}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="card mb16">
+      <h2 class="serif mb14" style="font-size:16.5px;">Ajouter une dépense</h2>
+      <form class="expense-form" data-form="expense" style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr .7fr auto; gap:10px; align-items:end;">
+        <label class="field">Nom
+          <input class="input" type="text" data-bind="form.name" value="${s.form.name}" placeholder="Ex. Courses Carrefour" />
+        </label>
+        <label class="field">Montant
+          <input class="input" type="number" min="0" step="0.01" data-bind="form.amount" value="${s.form.amount}" placeholder="0,00" />
+        </label>
+        <label class="field">50/30/20
+          <select class="input" data-bind="form.group">
+            ${GROUPS.map(g => `<option value="${g.key}" ${s.form.group===g.key?'selected':''}>${g.label}</option>`).join('')}
+          </select>
+        </label>
+        <label class="field">Nature
+          <div class="row gap8" style="margin-top:5px;">
+            <select class="input" style="margin-top:0;" data-bind="form.nature">
+              ${s.natures.map(n => `<option value="${n}" ${s.form.nature===n?'selected':''}>${n}</option>`).join('')}
+            </select>
+            <button type="button" class="icon-btn" style="border:1px solid var(--rule);" data-action="toggle-natures">⚙</button>
+          </div>
+        </label>
+        <label class="field">Jour
+          <input class="input" type="number" min="1" max="${dim}" data-bind="form.day" value="${s.form.day}" />
+        </label>
+        <button type="submit" class="btn">+ Ajouter</button>
+      </form>
+      ${s.formError ? `<div style="color:var(--danger); font-size:12.5px; margin-top:10px;">${s.formError}</div>` : ''}
+
+      ${s.showNatureManager ? `
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--rule);">
+        <div class="muted" style="font-size:12.5px; margin-bottom:10px;">Nature des dépenses (ajoute ou retire librement)</div>
+        <div>
+          ${s.natures.map(n => `
+            <span class="chip">${n}
+              <button class="icon-btn" style="padding:2px;" data-action="remove-nature" data-nature="${n}">✕</button>
+            </span>`).join('')}
+        </div>
+        <div class="row gap8" style="max-width:320px; margin-top:4px;">
+          <input class="input" style="margin-top:0;" placeholder="Nouvelle nature" data-bind="newNatureInput" value="${s.newNatureInput}" data-enter="add-nature" />
+          <button type="button" class="btn-ghost" data-action="add-nature">Ajouter</button>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="card mb16">
+      <h2 class="serif mb14" style="font-size:16.5px;">Importer un relevé bancaire</h2>
+      <div class="muted" style="font-size:12.5px; margin-bottom:12px;">
+        Fichier CSV exporté depuis ta banque (testé avec le Crédit Agricole). Les catégories sont suggérées automatiquement — tu peux tout corriger avant de valider.
+      </div>
+      <label class="file-drop" for="csvFileInput">
+        📄 Choisir un fichier CSV
+        <input id="csvFileInput" type="file" accept=".csv,text/csv" style="display:none;" />
+      </label>
+      ${s.importError ? `<div style="color:var(--danger); font-size:12.5px; margin-top:10px;">${s.importError}</div>` : ''}
+      ${s.importBusy && !s.importOpen ? `<div class="muted" style="font-size:12.5px; margin-top:10px;">Lecture du fichier…</div>` : ''}
+
+      ${s.importOpen ? `
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--rule);">
+        <div class="row between" style="flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+          <div id="import-summary" class="muted" style="font-size:12.5px;">
+            ${s.importRows.filter(r=>r.checked).length} opération(s) sélectionnée(s) sur ${s.importRows.length}
+          </div>
+          <div class="row gap8">
+            <button type="button" class="btn-ghost" data-action="import-select-all">Tout cocher</button>
+            <button type="button" class="btn-ghost" data-action="import-select-none">Tout décocher</button>
+          </div>
+        </div>
+        <div class="import-table">
+          <div class="import-row is-header">
+            <span></span><span>Date</span><span>Opération</span><span>Montant</span><span>Catégorie</span>
+          </div>
+          ${s.importRows.map(r => `
+            <div class="import-row">
+              <input type="checkbox" data-import-checkbox data-id="${r.id}" ${r.checked?'checked':''} />
+              <span class="muted">${String(r.day).padStart(2,'0')}/${String(r.month).padStart(2,'0')}</span>
+              <span class="imp-name" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.label.replace(/"/g,'&quot;')}">
+                ${r.isDebit ? '' : '↩ '}${r.label}
+                ${r.duplicate ? `<span class="badge-dup">déjà présent</span>` : ''}
+                ${!r.isDebit ? `<span class="badge-dup">crédit — non importé par défaut</span>` : ''}
+              </span>
+              <span class="imp-meta tabnum" style="${r.isDebit?'':'color:var(--muted);'}">${fmtEUR2(r.amount)}</span>
+              <div class="imp-controls">
+                <select data-import-field="group" data-id="${r.id}">
+                  ${GROUPS.map(g => `<option value="${g.key}" ${r.group===g.key?'selected':''}>${g.label}</option>`).join('')}
+                </select>
+                <select data-import-field="nature" data-id="${r.id}">
+                  ${s.natures.map(n => `<option value="${n}" ${r.nature===n?'selected':''}>${n}</option>`).join('')}
+                </select>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="row gap8" style="margin-top:14px;">
+          <button type="button" id="import-confirm-btn" class="btn" data-action="import-confirm" ${s.importBusy?'disabled':''}>
+            ${s.importBusy ? 'Import en cours…' : `Importer (${s.importRows.filter(r=>r.checked).length})`}
+          </button>
+          <button type="button" class="btn-ghost" data-action="import-cancel">Annuler</button>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="grid2b mb16" style="align-items:start;">
+      <div class="card">
+        <div class="row between mb14" style="flex-wrap:wrap; gap:10px;">
+          <h2 class="serif" style="font-size:16.5px; margin:0;">Dépenses du mois</h2>
+          <div class="row gap8">
+            <select class="input" style="width:auto; margin-top:0; font-size:12.5px;" data-bind="filterGroup">
+              <option value="all" ${s.filterGroup==='all'?'selected':''}>Toutes catégories</option>
+              ${GROUPS.map(g => `<option value="${g.key}" ${s.filterGroup===g.key?'selected':''}>${g.label}</option>`).join('')}
+            </select>
+            <select class="input" style="width:auto; margin-top:0; font-size:12.5px;" data-bind="filterNature">
+              <option value="all" ${s.filterNature==='all'?'selected':''}>Toutes natures</option>
+              ${availableNaturesForFilter.map(n => `<option value="${n}" ${s.filterNature===n?'selected':''}>${n}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${filteredExpenses.length === 0
+          ? `<div class="muted" style="font-size:13px; padding:18px 0;">Aucune dépense enregistrée pour ce filtre.</div>`
+          : filteredExpenses.map(e => {
+              const g = GROUPS.find(x => x.key === e.group_type);
+              return `
+              <div class="exp-row">
+                <div class="dot" style="background:${g.color};"></div>
+                <div style="flex:1; min-width:0;">
+                  <div style="font-size:13.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.name}</div>
+                  <div class="muted" style="font-size:11.5px;">${e.nature} · le ${e.day}</div>
+                </div>
+                <div class="tabnum" style="font-size:13.5px; font-weight:600; white-space:nowrap;">${fmtEUR2(e.amount)}</div>
+                <button class="icon-btn" data-action="delete-expense" data-id="${e.id}">🗑</button>
+              </div>`;
+            }).join('')}
+      </div>
+
+      <div class="card">
+        <h2 class="serif mb14" style="font-size:16.5px;">Par nature</h2>
+        ${byNature.length === 0
+          ? `<div class="muted" style="font-size:13px;">Rien à afficher pour l'instant.</div>`
+          : `<div style="display:flex; flex-direction:column; gap:12px;">
+              ${byNature.map((row, i) => `
+                <div>
+                  <div class="row between" style="font-size:12.5px; margin-bottom:4px;">
+                    <span>${row.nature}</span><span class="muted tabnum">${fmtEUR2(row.total)}</span>
+                  </div>
+                  <div class="bar-track"><div class="bar-fill" style="width:${row.pct}%; background:${NATURE_PALETTE[i % NATURE_PALETTE.length]};"></div></div>
+                </div>`).join('')}
+            </div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row between mb14" style="flex-wrap:wrap; gap:10px;">
+        <h2 class="serif" style="font-size:16.5px; margin:0;">Évolution sur l'année ${s.year}</h2>
+        <div class="muted" style="font-size:12.5px;">Taux d'épargne annuel : <strong style="color:var(--ink);">${yearSavingsRate()}%</strong></div>
+      </div>
+      <div style="width:100%; height:260px; margin-top:10px;">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center; font-size:11.5px; margin-top:24px;">
+      Connecté avec ${s.session?.user?.email || ''} · données stockées dans ta base Supabase.
+    </div>
+  </div>`;
+}
+
+function yearSavingsRate() {
+  let income = 0, epargne = 0;
+  for (const m of state.yearMonths) {
+    income += (Number(m.salary_a) || 0) + (Number(m.salary_b) || 0);
+    for (const e of (m.expenses || [])) if (e.group_type === 'epargne') epargne += Number(e.amount || 0);
+  }
+  return income > 0 ? Math.round((epargne / income) * 100) : 0;
+}
+
+let chartInstance = null;
+function drawChart() {
+  const canvas = document.getElementById('trendChart');
+  if (!canvas) return;
+  const monthsPresent = state.yearMonths
+    .filter(m => ((Number(m.salary_a)||0)+(Number(m.salary_b)||0)) > 0 || (m.expenses||[]).length > 0)
+    .sort((a, b) => a.month - b.month);
+  if (monthsPresent.length < 2) {
+    canvas.parentElement.innerHTML = `<div class="muted" style="font-size:13px; padding:20px 0;">Renseigne au moins deux mois pour voir la tendance se dessiner.</div>`;
+    return;
+  }
+  const labels = monthsPresent.map(m => new Date(state.year, m.month - 1, 1).toLocaleDateString('fr-FR', { month: 'short' }));
+  function pctSeries(groupKey) {
+    return monthsPresent.map(m => {
+      const inc = (Number(m.salary_a) || 0) + (Number(m.salary_b) || 0);
+      const s = (m.expenses || []).filter(e => e.group_type === groupKey).reduce((a, e) => a + Number(e.amount || 0), 0);
+      return inc > 0 ? Math.round((s / inc) * 100) : 0;
+    });
+  }
+  if (chartInstance) { chartInstance.destroy(); }
+  chartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Besoins', data: pctSeries('besoins'), borderColor: '#2F6E68', backgroundColor: 'rgba(47,110,104,0.12)', fill: true, tension: 0.3 },
+        { label: 'Envies', data: pctSeries('envies'), borderColor: '#A9522F', backgroundColor: 'rgba(169,82,47,0.12)', fill: true, tension: 0.3 },
+        { label: 'Épargne', data: pctSeries('epargne'), borderColor: '#48538A', backgroundColor: 'rgba(72,83,138,0.12)', fill: true, tension: 0.3 },
+        { label: 'Repère 50%', data: labels.map(() => 50), borderColor: '#2F6E68', borderDash: [4,4], pointRadius: 0, fill: false },
+        { label: 'Repère 30%', data: labels.map(() => 30), borderColor: '#A9522F', borderDash: [4,4], pointRadius: 0, fill: false },
+        { label: 'Repère 20%', data: labels.map(() => 20), borderColor: '#48538A', borderDash: [4,4], pointRadius: 0, fill: false },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { ticks: { callback: v => v + '%' }, grid: { color: '#DAD5C4' } }, x: { grid: { display: false } } },
+      plugins: { legend: { labels: { font: { family: 'IBM Plex Sans', size: 11.5 } } } },
+    },
+  });
+}
+
+function render() {
+  const scrollY = window.scrollY;
+  root.innerHTML = state.session ? appTemplate() : authTemplate();
+  if (state.session && !state.loading) requestAnimationFrame(drawChart);
+  window.scrollTo(0, scrollY);
+}
+
+// =========================================================
+// 7) DÉLÉGATION D'ÉVÉNEMENTS
+// =========================================================
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  if (action === 'auth-mode') { state.authMode = el.dataset.mode; state.authError = ''; render(); }
+  else if (action === 'signin') signIn();
+  else if (action === 'signup') signUp();
+  else if (action === 'signout') signOut();
+  else if (action === 'prev-month') changeMonth(-1);
+  else if (action === 'next-month') changeMonth(1);
+  else if (action === 'today') goToday();
+  else if (action === 'toggle-natures') { state.showNatureManager = !state.showNatureManager; render(); }
+  else if (action === 'add-nature') addNature();
+  else if (action === 'remove-nature') removeNature(el.dataset.nature);
+  else if (action === 'delete-expense') deleteExpense(el.dataset.id);
+  else if (action === 'import-select-all') selectImportRows('all');
+  else if (action === 'import-select-none') selectImportRows('none');
+  else if (action === 'import-cancel') cancelImport();
+  else if (action === 'import-confirm') confirmImport();
+});
+
+document.addEventListener('submit', (e) => {
+  if (e.target.closest('[data-form="expense"]')) addExpense(e);
+});
+
+document.addEventListener('input', (e) => {
+  const bind = e.target.dataset.bind;
+  if (!bind) return;
+  const val = e.target.value;
+  if (bind.startsWith('form.')) state.form[bind.split('.')[1]] = val;
+  else state[bind] = val;
+  if (bind === 'filterGroup' || bind === 'filterNature') render();
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'csvFileInput' && e.target.files && e.target.files[0]) {
+    handleCsvFile(e.target.files[0]);
+    return;
+  }
+  if (e.target.matches('[data-import-checkbox]')) {
+    const row = state.importRows.find(r => r.id === e.target.dataset.id);
+    if (row) { row.checked = e.target.checked; updateImportSummary(); }
+    return;
+  }
+  const field = e.target.dataset.importField;
+  if (field) {
+    const row = state.importRows.find(r => r.id === e.target.dataset.id);
+    if (row) row[field] = e.target.value;
+  }
+});
+
+document.addEventListener('blur', (e) => {
+  const field = e.target.dataset.bindBlur;
+  if (field) updateSalary(field, e.target.value);
+}, true);
+
+document.addEventListener('keydown', (e) => {
+  const enterAction = e.target.dataset.enter;
+  if (enterAction === 'add-nature' && e.key === 'Enter') { e.preventDefault(); addNature(); }
+});
+
+// =========================================================
+// 8) DÉMARRAGE
+// =========================================================
+initAuth();
+</script>
+</body>
+</html>
