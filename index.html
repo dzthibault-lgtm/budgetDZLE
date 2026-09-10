@@ -167,6 +167,7 @@ const state = {
   yearMonths: [],
   filterGroup: 'all',
   filterNature: 'all',
+  editingId: null,
   showNatureManager: false,
   newNatureInput: '',
   form: { name: '', amount: '', group: 'besoins', nature: '', day: now.getDate() },
@@ -327,6 +328,38 @@ async function addExpense(e) {
 async function deleteExpense(id) {
   const { error } = await sb.from('expenses').delete().eq('id', id);
   if (!error) { state.expenses = state.expenses.filter(e => e.id !== id); refreshYear(); }
+  render();
+}
+
+function startEditExpense(id) { state.editingId = id; render(); }
+function cancelEditExpense() { state.editingId = null; render(); }
+
+async function saveEditExpense(id) {
+  const nameEl = document.getElementById(`edit-name-${id}`);
+  const amountEl = document.getElementById(`edit-amount-${id}`);
+  const groupEl = document.getElementById(`edit-group-${id}`);
+  const natureEl = document.getElementById(`edit-nature-${id}`);
+  const dayEl = document.getElementById(`edit-day-${id}`);
+  const amt = Number(amountEl.value);
+  if (!nameEl.value.trim() || !amountEl.value || isNaN(amt) || amt <= 0) {
+    state.saveError = 'Nom ou montant invalide.'; render(); return;
+  }
+  const dim = daysInMonth(state.year, state.month);
+  const patch = {
+    name: nameEl.value.trim(),
+    amount: amt,
+    group_type: groupEl.value,
+    nature: natureEl.value,
+    day: Math.min(Math.max(Number(dayEl.value) || 1, 1), dim),
+  };
+  const { data, error } = await sb.from('expenses').update(patch).eq('id', id).select().single();
+  if (error) { state.saveError = "La modification a échoué."; }
+  else {
+    state.expenses = state.expenses.map(e => e.id === id ? data : e);
+    state.saveError = '';
+    refreshYear();
+  }
+  state.editingId = null;
   render();
 }
 
@@ -805,6 +838,28 @@ function appTemplate() {
           ? `<div class="muted" style="font-size:13px; padding:18px 0;">Aucune dépense enregistrée pour ce filtre.</div>`
           : filteredExpenses.map(e => {
               const g = GROUPS.find(x => x.key === e.group_type);
+              if (s.editingId === e.id) {
+                return `
+                <div class="exp-row" style="align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                  <div style="display:grid; grid-template-columns:1fr 90px; gap:8px; flex:1; min-width:220px;">
+                    <input class="input" style="margin-top:0;" type="text" id="edit-name-${e.id}" value="${e.name.replace(/"/g,'&quot;')}" />
+                    <input class="input" style="margin-top:0;" type="number" min="0" step="0.01" id="edit-amount-${e.id}" value="${e.amount}" />
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:8px; flex:1; min-width:260px;">
+                    <select class="input" style="margin-top:0;" id="edit-group-${e.id}">
+                      ${GROUPS.map(gr => `<option value="${gr.key}" ${e.group_type===gr.key?'selected':''}>${gr.label}</option>`).join('')}
+                    </select>
+                    <select class="input" style="margin-top:0;" id="edit-nature-${e.id}">
+                      ${s.natures.map(n => `<option value="${n}" ${e.nature===n?'selected':''}>${n}</option>`).join('')}
+                    </select>
+                    <input class="input" style="margin-top:0;" type="number" min="1" max="${dim}" id="edit-day-${e.id}" value="${e.day}" />
+                  </div>
+                  <div class="row gap8">
+                    <button class="icon-btn" style="border:1px solid var(--rule);" data-action="save-expense" data-id="${e.id}">✓</button>
+                    <button class="icon-btn" style="border:1px solid var(--rule);" data-action="cancel-edit">✕</button>
+                  </div>
+                </div>`;
+              }
               return `
               <div class="exp-row">
                 <div class="dot" style="background:${g.color};"></div>
@@ -813,6 +868,7 @@ function appTemplate() {
                   <div class="muted" style="font-size:11.5px;">${e.nature} · le ${e.day}</div>
                 </div>
                 <div class="tabnum" style="font-size:13.5px; font-weight:600; white-space:nowrap;">${fmtEUR2(e.amount)}</div>
+                <button class="icon-btn" data-action="edit-expense" data-id="${e.id}">✎</button>
                 <button class="icon-btn" data-action="delete-expense" data-id="${e.id}">🗑</button>
               </div>`;
             }).join('')}
@@ -922,6 +978,9 @@ document.addEventListener('click', (e) => {
   else if (action === 'add-nature') addNature();
   else if (action === 'remove-nature') removeNature(el.dataset.nature);
   else if (action === 'delete-expense') deleteExpense(el.dataset.id);
+  else if (action === 'edit-expense') startEditExpense(el.dataset.id);
+  else if (action === 'save-expense') saveEditExpense(el.dataset.id);
+  else if (action === 'cancel-edit') cancelEditExpense();
   else if (action === 'import-select-all') selectImportRows('all');
   else if (action === 'import-select-none') selectImportRows('none');
   else if (action === 'import-cancel') cancelImport();
