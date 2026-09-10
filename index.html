@@ -155,10 +155,9 @@ const NATURE_PALETTE = ['#2F6E68', '#A9522F', '#48538A', '#8C7A3E', '#6E4A5E', '
 
 const now = new Date();
 const state = {
-  session: null,
-  authMode: 'signin',
-  authEmail: '', authPassword: '',
-  authError: '', authLoading: false,
+  unlocked: false,
+  gateError: '',
+  gateLoading: false,
   loading: true,
   year: now.getFullYear(),
   month: now.getMonth() + 1,
@@ -199,42 +198,38 @@ function toast(msg) {
 }
 
 // =========================================================
-// 2) AUTHENTIFICATION
+// 2) VERROU PAR MOT DE PASSE (accès partagé, sans compte individuel)
 // =========================================================
-async function initAuth() {
-  const { data } = await sb.auth.getSession();
-  state.session = data.session;
-  sb.auth.onAuthStateChange((_event, session) => {
-    state.session = session;
-    if (session) { loadAll(); } else { render(); }
-  });
-  if (state.session) { await loadAll(); } else { state.loading = false; render(); }
+const APP_PASSWORD = "BudgetTaniere!4";
+const UNLOCK_STORAGE_KEY = "budget-unlocked-v1";
+
+async function initApp() {
+  const remembered = localStorage.getItem(UNLOCK_STORAGE_KEY) === '1';
+  if (remembered) {
+    state.unlocked = true;
+    await loadAll();
+  } else {
+    state.loading = false;
+    render();
+  }
 }
 
-async function signIn() {
-  state.authError = ''; state.authLoading = true; render();
-  const { error } = await sb.auth.signInWithPassword({ email: state.authEmail, password: state.authPassword });
-  state.authLoading = false;
-  if (error) { state.authError = traduireErreur(error.message); render(); }
+async function unlockApp(password) {
+  state.gateError = '';
+  if (password === APP_PASSWORD) {
+    state.unlocked = true;
+    localStorage.setItem(UNLOCK_STORAGE_KEY, '1');
+    await loadAll();
+  } else {
+    state.gateError = "Mot de passe incorrect.";
+    render();
+  }
 }
 
-async function signUp() {
-  state.authError = ''; state.authLoading = true; render();
-  const { error } = await sb.auth.signUp({ email: state.authEmail, password: state.authPassword });
-  state.authLoading = false;
-  if (error) { state.authError = traduireErreur(error.message); render(); }
-  else { state.authError = "Compte créé. Vérifie tes e-mails si une confirmation est requise, sinon tu es déjà connecté(e)."; render(); }
-}
-
-async function signOut() {
-  await sb.auth.signOut();
-}
-
-function traduireErreur(msg) {
-  if (/already registered/i.test(msg)) return "Un compte existe déjà avec cet e-mail.";
-  if (/invalid login/i.test(msg)) return "E-mail ou mot de passe incorrect.";
-  if (/password should be/i.test(msg)) return "Le mot de passe doit faire au moins 6 caractères.";
-  return msg;
+function lockApp() {
+  state.unlocked = false;
+  localStorage.removeItem(UNLOCK_STORAGE_KEY);
+  render();
 }
 
 // =========================================================
@@ -571,27 +566,22 @@ function gaugeSVG(percent, colorVar, colorHex) {
     </svg>`;
 }
 
-function authTemplate() {
+function gateTemplate() {
   const s = state;
   return `
   <div class="wrap">
     <div class="auth-screen card">
       <div class="muted" style="font-size:11.5px; letter-spacing:.04em; margin-bottom:4px;">BUDGET MENSUEL · 50/30/20</div>
       <h1 class="serif" style="font-size:26px; margin:0 0 20px;">Grand livre</h1>
-      <div class="auth-tabs">
-        <button data-action="auth-mode" data-mode="signin" class="${s.authMode==='signin'?'active':''}">Connexion</button>
-        <button data-action="auth-mode" data-mode="signup" class="${s.authMode==='signup'?'active':''}">Créer un compte</button>
-      </div>
-      <label class="field">E-mail
-        <input class="input" type="email" data-bind="authEmail" value="${s.authEmail}" placeholder="toi@exemple.com" />
-      </label>
-      <label class="field" style="margin-top:10px;">Mot de passe
-        <input class="input" type="password" data-bind="authPassword" value="${s.authPassword}" placeholder="••••••••" />
-      </label>
-      ${s.authError ? `<div class="alert" style="margin-top:14px;">${s.authError}</div>` : ''}
-      <button class="btn" style="width:100%; margin-top:16px;" data-action="${s.authMode==='signin'?'signin':'signup'}" ${s.authLoading?'disabled':''}>
-        ${s.authLoading ? 'Un instant…' : (s.authMode==='signin' ? 'Se connecter' : 'Créer mon compte')}
-      </button>
+      <form data-form="unlock">
+        <label class="field">Mot de passe
+          <input id="gatePasswordInput" class="input" type="password" placeholder="••••••••" autofocus />
+        </label>
+        ${s.gateError ? `<div class="alert" style="margin-top:14px;">${s.gateError}</div>` : ''}
+        <button type="submit" class="btn" style="width:100%; margin-top:16px;" ${s.gateLoading?'disabled':''}>
+          ${s.gateLoading ? 'Un instant…' : 'Déverrouiller'}
+        </button>
+      </form>
     </div>
   </div>`;
 }
@@ -625,7 +615,7 @@ function appTemplate() {
         </div>
         <button class="icon-btn" data-action="next-month">→</button>
         <button class="btn-ghost" data-action="today" style="margin-left:8px;">Aujourd'hui</button>
-        <button class="btn-ghost" data-action="signout" style="margin-left:8px;">Déconnexion</button>
+        <button class="btn-ghost" data-action="lock" style="margin-left:8px;">Verrouiller</button>
       </div>
     </div>
 
@@ -855,7 +845,7 @@ function appTemplate() {
     </div>
 
     <div class="muted" style="text-align:center; font-size:11.5px; margin-top:24px;">
-      Connecté avec ${s.session?.user?.email || ''} · données stockées dans ta base Supabase.
+      Données stockées dans ta base Supabase, protégées par mot de passe.
     </div>
   </div>`;
 }
@@ -912,8 +902,8 @@ function drawChart() {
 
 function render() {
   const scrollY = window.scrollY;
-  root.innerHTML = state.session ? appTemplate() : authTemplate();
-  if (state.session && !state.loading) requestAnimationFrame(drawChart);
+  root.innerHTML = state.unlocked ? appTemplate() : gateTemplate();
+  if (state.unlocked && !state.loading) requestAnimationFrame(drawChart);
   window.scrollTo(0, scrollY);
 }
 
@@ -924,10 +914,7 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
-  if (action === 'auth-mode') { state.authMode = el.dataset.mode; state.authError = ''; render(); }
-  else if (action === 'signin') signIn();
-  else if (action === 'signup') signUp();
-  else if (action === 'signout') signOut();
+  if (action === 'lock') lockApp();
   else if (action === 'prev-month') changeMonth(-1);
   else if (action === 'next-month') changeMonth(1);
   else if (action === 'today') goToday();
@@ -942,6 +929,12 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('submit', (e) => {
+  if (e.target.closest('[data-form="unlock"]')) {
+    e.preventDefault();
+    const input = document.getElementById('gatePasswordInput');
+    unlockApp(input ? input.value : '');
+    return;
+  }
   if (e.target.closest('[data-form="expense"]')) addExpense(e);
 });
 
@@ -984,7 +977,7 @@ document.addEventListener('keydown', (e) => {
 // =========================================================
 // 8) DÉMARRAGE
 // =========================================================
-initAuth();
+initApp();
 </script>
 </body>
 </html>
